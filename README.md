@@ -1,7 +1,10 @@
-<h1 align="center" style="display: flex; justify-content: center; align-items: center; gap: 12px">
-  <img src="images/pls.gif" alt="Scrapybara" width="36">
-  Scrapybara Playground
-</h1>
+<div id="toc" align="center">
+  <ul style="list-style: none">
+    <summary>
+      <h1><img src="images/pls.gif" alt="Scrapybara" width="24"> Scrapybara Playground <img src="images/pls.gif" alt="Scrapybara" width="24"></h1>
+    </summary>
+  </ul>
+</div>
 
 <p align="center">
   Computer use playground hosted on Scrapybara instances
