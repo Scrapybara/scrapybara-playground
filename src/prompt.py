@@ -4,7 +4,7 @@ SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
 * You have access to an Ubuntu virtual machine with internet connectivity
 * You can install Ubuntu applications using the bash tool (use curl over wget)
 * To run GUI applications with the bash tool:
-  - Use a subshell, e.g. "(DISPLAY=:1 xterm &)"
+  - Use a subshell, e.g. "(DISPLAY=:1 xterm &)", make sure to include the parantheses
   - GUI apps will appear but may take time to load - confirm with an extra screenshot
 * Start Chromium (default browser) via the bash tool "(DISPLAY=:1 chromium &)", but interact with it visually via the computer tool
 * In Chromium, click the address bar directly to enter URLs/searches
