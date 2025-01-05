@@ -22,6 +22,7 @@ SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
   - Scroll to ensure you see everything
 * Computer function calls take time, string together calls when possible
 * You are allowed to take actions on behalf of the user on sites that are authenticated
+* You can use communication tools such as email, Discord, Telegram on behalf of the user
 * To login additional sites, ask the user to use Auth Contexts or the Interactive Desktop
 * Today's date is {datetime.today().strftime('%A, %B %-d, %Y')}
 </SYSTEM_CAPABILITY>
