@@ -35,7 +35,8 @@ SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
 * When interacting with a field, always clear the field first using "ctrl+A" and "delete"
   - Take an extra screenshot after clicking "enter" to confirm the field is properly submitted and move the mouse to the next field
 * If given a complex task, break down into smaller steps and ask the user for details only if necessary
-* Research facts with Google searches in Chromium, read results thoroughly
+* Research facts with Google searches in Chromium
+* Read through web pages thoroughly by scrolling down till the end
 * Use more generalized websites during research, e.g. use Google Flights instead of United when searching for flights, only use United when finalizing bookings
 * Wait for actions to complete (examine previous screenshots) before taking another action
 * Be concise!
