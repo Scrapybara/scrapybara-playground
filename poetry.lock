@@ -1339,13 +1339,13 @@ websockets = ">=11,<14"
 
 [[package]]
 name = "scrapybara"
-version = "2.0.4"
+version = "2.0.7"
 description = ""
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "scrapybara-2.0.4-py3-none-any.whl", hash = "sha256:97773cb18c8a30ae28fb02c2d93711a2709cc88ab867888da8bec8ee93af1609"},
-    {file = "scrapybara-2.0.4.tar.gz", hash = "sha256:207e5e0ae5d6aa42959e47b266121a79b2c4cdc6403a8093fe5326df2c16843d"},
+    {file = "scrapybara-2.0.7-py3-none-any.whl", hash = "sha256:679932ade30daf3b48934f3144ef20c98a1572aa5fe4f7b00bb64ddbc19420ef"},
+    {file = "scrapybara-2.0.7.tar.gz", hash = "sha256:18ea34c9fbe1c93b43837d92dd0c726091bb7690928965b57300eb1367760b0e"},
 ]
 
 [package.dependencies]
@@ -1912,4 +1912,4 @@ testing = ["coverage[toml]", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "48dcf7813c478c74faf707185e01d3d97bb122909f9fdebe641fdd73bff8c910"
+content-hash = "4861e8710114ad6c504d76ff30ad072e1a088aa3156941d277ab5c4444378f6c"

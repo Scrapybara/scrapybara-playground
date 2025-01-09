@@ -39,13 +39,13 @@ app.add_middleware(
 class ChatSession:
     """Manages a single chat session including instance lifecycle and message history."""
 
-    def __init__(self, api_key: str, context_id: str):
+    def __init__(self, api_key: str, auth_state_id: str):
         self.messages: list[BetaMessageParam] = []
         self.instance = None
         self.tool_collection = None
         self.stream_url = None
         self.api_key = api_key
-        self.context_id = context_id
+        self.auth_state_id = auth_state_id
         self.scrapybara = Scrapybara(api_key=api_key)
 
     async def initialize_instance(self) -> tuple[bool, str | None]:
@@ -59,9 +59,9 @@ class ChatSession:
                 self.instance = self.scrapybara.start(instance_type="large")
                 self.stream_url = self.instance.get_stream_url().stream_url
 
-                if self.context_id:
+                if self.auth_state_id:
                     self.instance.browser.start()
-                    self.instance.browser.authenticate(context_id=self.context_id)
+                    self.instance.browser.authenticate(auth_state_id=self.auth_state_id)
 
                 self.tool_collection = ToolCollection(
                     ComputerTool(self.instance),
@@ -251,13 +251,13 @@ async def websocket_endpoint(websocket: WebSocket):
             raise HTTPException(status_code=400, detail="API key required")
 
         api_key = data["api_key"]
-        context_id = data.get("context_id")
-        chat_session = ChatSession(api_key, context_id)
+        auth_state_id = data.get("auth_state_id")
+        chat_session = ChatSession(api_key, auth_state_id)
 
         # Send initial status message
         status_message = "₍ᐢ•(ܫ)•ᐢ₎ Deploying instance"
-        if context_id:
-            status_message += " with auth context"
+        if auth_state_id:
+            status_message += " with auth state"
         await websocket.send_json({"type": "tool_result", "output": status_message})
 
         await asyncio.sleep(0)  # Yield control
