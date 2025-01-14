@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import cast
 from anthropic.types.beta import (
     BetaToolResultBlockParam,
     BetaTextBlockParam,
@@ -6,28 +6,6 @@ from anthropic.types.beta import (
     BetaMessageParam,
 )
 from scrapybara.anthropic import ToolResult
-
-
-class ToolCollection:
-    """A collection of anthropic-defined tools."""
-
-    def __init__(self, *tools):
-        self.tools = tools
-        self.tool_map = {tool.to_params()["name"]: tool for tool in tools}
-
-    def to_params(self) -> list:
-        return [tool.to_params() for tool in self.tools]
-
-    async def run(self, *, name: str, tool_input: dict[str, Any]) -> ToolResult:
-        tool = self.tool_map.get(name)
-        if not tool:
-            return None
-        try:
-            r = await tool(**tool_input)
-            return r
-        except Exception as e:
-            print(f"Error running tool {name}: {e}")
-            return None
 
 
 def maybe_filter_to_n_most_recent_images(
@@ -70,13 +48,14 @@ def maybe_filter_to_n_most_recent_images(
 
 
 def make_tool_result(result: ToolResult, tool_use_id: str) -> BetaToolResultBlockParam:
-    tool_result_content: list[BetaTextBlockParam | BetaImageBlockParam] | str = []
+    tool_result_content: list[BetaTextBlockParam | BetaImageBlockParam] | str
     is_error = False
 
     if result.error:
         is_error = True
         tool_result_content = result.error
     else:
+        tool_result_content = []
         if result.output:
             tool_result_content.append(
                 {

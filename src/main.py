@@ -1,23 +1,23 @@
 import os
 import asyncio
 import uvicorn
-from typing import Any, cast
+from typing import Any, cast, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from anthropic import Anthropic
 from anthropic.types.beta import BetaMessageParam
 from scrapybara import Scrapybara
-from scrapybara.anthropic import BashTool, ComputerTool, EditTool
+from scrapybara.anthropic import BashTool, ComputerTool, EditTool, ToolCollection
+from scrapybara.client import Instance
 from dotenv import load_dotenv
 
-from .db import Database
-from .utils import (
-    ToolCollection,
+from src.db import Database
+from src.utils import (
     maybe_filter_to_n_most_recent_images,
     make_tool_result,
     response_to_params,
 )
-from .prompt import SYSTEM_PROMPT
+from src.prompt import SYSTEM_PROMPT
 
 # Load environment variables
 load_dotenv(override=True)
@@ -39,38 +39,40 @@ app.add_middleware(
 class ChatSession:
     """Manages a single chat session including instance lifecycle and message history."""
 
-    def __init__(self, api_key: str, auth_state_id: str):
+    def __init__(self, api_key: str, auth_state_id: Optional[str] = None):
         self.messages: list[BetaMessageParam] = []
-        self.instance = None
-        self.tool_collection = None
-        self.stream_url = None
+        self.instance: Optional[Instance] = None
+        self.tool_collection: Optional[ToolCollection] = None
+        self.stream_url: Optional[str] = None
         self.api_key = api_key
         self.auth_state_id = auth_state_id
         self.scrapybara = Scrapybara(api_key=api_key)
 
-    async def initialize_instance(self) -> tuple[bool, str | None]:
+    async def initialize_instance(self) -> tuple[bool, Optional[str]]:
         """Initialize a new Scrapybara instance with necessary tools.
 
         Returns:
-            Tuple of (success: bool, error_message: str | None)
+            Tuple of (success: bool, error_message: Optional[str])
         """
         if not self.instance:
             try:
-                self.instance = self.scrapybara.start(instance_type="large")
-                self.stream_url = self.instance.get_stream_url().stream_url
+                instance = self.scrapybara.start(instance_type="large")
+                self.instance = instance
+                self.stream_url = instance.get_stream_url().stream_url
 
                 if self.auth_state_id:
-                    self.instance.browser.start()
-                    self.instance.browser.authenticate(auth_state_id=self.auth_state_id)
+                    instance.browser.start()
+                    instance.browser.authenticate(auth_state_id=self.auth_state_id)
 
                 self.tool_collection = ToolCollection(
-                    ComputerTool(self.instance),
-                    BashTool(self.instance),
-                    EditTool(self.instance),
+                    ComputerTool(instance),
+                    BashTool(instance),
+                    EditTool(instance),
                 )
                 return True, None
             except Exception as e:
                 return False, str(e)
+        return True, None
 
     async def terminate_instance(self):
         """Safely terminate the Scrapybara instance."""
@@ -110,21 +112,6 @@ async def process_chat_message(
     user_id = db.get_user_id(chat_session.api_key)
     agent_credits = db.get_credits(user_id)
 
-    # Check if user has available credits
-    if agent_credits <= 0:
-        await websocket.send_json(
-            {
-                "type": "out_of_credits",
-                "content": "You have run out of agent credits. Please purchase more to continue.",
-            }
-        )
-        return
-
-    # Update agent credits
-    db.decrement_credits(user_id)
-
-    await chat_session.initialize_instance()
-
     chat_session.messages.append(
         {
             "role": "user",
@@ -136,6 +123,19 @@ async def process_chat_message(
 
     while True:
         try:
+            # Check if user has available credits
+            if agent_credits <= 0:
+                await websocket.send_json(
+                    {
+                        "type": "out_of_credits",
+                        "content": "You have run out of agent credits. Please purchase more to continue.",
+                    }
+                )
+                return
+
+            # Update agent credits
+            db.decrement_credits(user_id)
+
             if await check_pause_message(websocket):
                 await websocket.send_json(
                     {"type": "loop_paused", "content": "Loop paused"}
@@ -143,6 +143,8 @@ async def process_chat_message(
                 break
 
             maybe_filter_to_n_most_recent_images(chat_session.messages, 4, 2)
+
+            assert chat_session.tool_collection is not None  # for type checker
 
             # Generate response from Claude
             response = client.beta.messages.create(
@@ -251,7 +253,7 @@ async def websocket_endpoint(websocket: WebSocket):
             raise HTTPException(status_code=400, detail="API key required")
 
         api_key = data["api_key"]
-        auth_state_id = data.get("auth_state_id")
+        auth_state_id = data.get("auth_state_id", None)
         chat_session = ChatSession(api_key, auth_state_id)
 
         # Send initial status message
@@ -277,6 +279,8 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.send_json(
             {"type": "stream_url", "url": chat_session.stream_url}
         )
+
+        assert chat_session.tool_collection is not None  # for type checker
 
         # Capture initial screenshot
         initial_screenshot = await chat_session.tool_collection.run(
