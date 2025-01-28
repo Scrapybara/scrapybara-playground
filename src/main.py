@@ -8,7 +8,7 @@ from anthropic import Anthropic
 from anthropic.types.beta import BetaMessageParam
 from scrapybara import Scrapybara
 from scrapybara.anthropic import BashTool, ComputerTool, EditTool, ToolCollection
-from scrapybara.client import Instance
+from scrapybara.client import UbuntuInstance
 from dotenv import load_dotenv
 
 from src.db import Database
@@ -41,7 +41,7 @@ class ChatSession:
 
     def __init__(self, api_key: str, auth_state_id: Optional[str] = None):
         self.messages: list[BetaMessageParam] = []
-        self.instance: Optional[Instance] = None
+        self.instance: Optional[UbuntuInstance] = None
         self.tool_collection: Optional[ToolCollection] = None
         self.stream_url: Optional[str] = None
         self.api_key = api_key
@@ -56,7 +56,7 @@ class ChatSession:
         """
         if not self.instance:
             try:
-                instance = self.scrapybara.start(instance_type="large")
+                instance = self.scrapybara.start_ubuntu()
                 self.instance = instance
                 self.stream_url = instance.get_stream_url().stream_url
 
@@ -277,22 +277,15 @@ async def websocket_endpoint(websocket: WebSocket):
             {"type": "tool_result", "output": "₍ᐢ•(ܫ)•ᐢ₎ Launching agent"}
         )
         await websocket.send_json(
-            {"type": "stream_url", "url": chat_session.stream_url}
+            {
+                "type": "instance_info",
+                "url": chat_session.stream_url,
+                "instance_id": chat_session.instance.id,
+                "launch_time": chat_session.instance.launch_time.isoformat(),
+            }
         )
 
         assert chat_session.tool_collection is not None  # for type checker
-
-        # Capture initial screenshot
-        initial_screenshot = await chat_session.tool_collection.run(
-            name="computer", tool_input={"action": "screenshot"}
-        )
-        if initial_screenshot and initial_screenshot.base64_image:
-            await websocket.send_json(
-                {
-                    "type": "tool_result",
-                    "image": initial_screenshot.base64_image,
-                }
-            )
 
         # Main message processing loop
         while True:
