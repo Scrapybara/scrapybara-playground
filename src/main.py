@@ -1,4 +1,3 @@
-import os
 import asyncio
 import uvicorn
 from typing import List, Optional

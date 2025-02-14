@@ -52,19 +52,6 @@ cd scrapybara-playground
 poetry install
 ```
 
-3. Set up environment variables
-
-```bash
-cp .env.example .env
-```
-
-Edit the `.env` file with your configuration:
-
-```env
-SUPABASE_URL=""
-SUPABASE_KEY=""
-```
-
 ### Running the server
 
 Start the development server:
