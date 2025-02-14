@@ -61,7 +61,6 @@ cp .env.example .env
 Edit the `.env` file with your configuration:
 
 ```env
-ANTHROPIC_API_KEY=""
 SUPABASE_URL=""
 SUPABASE_KEY=""
 ```
