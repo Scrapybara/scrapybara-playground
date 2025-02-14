@@ -1,28 +1,15 @@
 import os
 import asyncio
 import uvicorn
-from typing import Any, cast, Optional
+from typing import List, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from anthropic import Anthropic
-from anthropic.types.beta import BetaMessageParam
-from scrapybara import Scrapybara
-from scrapybara.anthropic import BashTool, ComputerTool, EditTool, ToolCollection
-from scrapybara.client import UbuntuInstance
-from dotenv import load_dotenv
-
-from src.db import Database
-from src.utils import (
-    maybe_filter_to_n_most_recent_images,
-    make_tool_result,
-    response_to_params,
-)
-from src.prompt import SYSTEM_PROMPT
-
-# Load environment variables
-load_dotenv(override=True)
-
-db = Database()
+from scrapybara import AsyncScrapybara
+from scrapybara.anthropic import Anthropic
+from scrapybara.prompts import UBUNTU_SYSTEM_PROMPT
+from scrapybara.tools import BashTool, ComputerTool, EditTool
+from scrapybara.types import Step, Message, UserMessage, Model, TextPart
+from scrapybara.client import AsyncUbuntuInstance
 
 app = FastAPI()
 
@@ -39,55 +26,39 @@ app.add_middleware(
 class ChatSession:
     """Manages a single chat session including instance lifecycle and message history."""
 
-    def __init__(self, api_key: str, auth_state_id: Optional[str] = None):
-        self.messages: list[BetaMessageParam] = []
-        self.instance: Optional[UbuntuInstance] = None
-        self.tool_collection: Optional[ToolCollection] = None
-        self.stream_url: Optional[str] = None
+    def __init__(
+        self,
+        api_key: str,
+        auth_state_id: Optional[str] = None,
+    ):
         self.api_key = api_key
         self.auth_state_id = auth_state_id
-        self.scrapybara = Scrapybara(api_key=api_key)
+        self.client = AsyncScrapybara(api_key=api_key)
+        self.instance: Optional[AsyncUbuntuInstance] = None
+        self.current_task: Optional[asyncio.Task] = None
 
     async def initialize_instance(self) -> tuple[bool, Optional[str]]:
-        """Initialize a new Scrapybara instance with necessary tools.
-
-        Returns:
-            Tuple of (success: bool, error_message: Optional[str])
-        """
-        if not self.instance:
-            try:
-                instance = self.scrapybara.start_ubuntu()
-                self.instance = instance
-                self.stream_url = instance.get_stream_url().stream_url
-
-                if self.auth_state_id:
-                    instance.browser.start()
-                    instance.browser.authenticate(auth_state_id=self.auth_state_id)
-
-                self.tool_collection = ToolCollection(
-                    ComputerTool(instance),
-                    BashTool(instance),
-                    EditTool(instance),
+        """Initialize a new Scrapybara instance."""
+        try:
+            self.instance = await self.client.start_ubuntu()
+            if self.auth_state_id:
+                await self.instance.browser.start()
+                await self.instance.browser.authenticate(
+                    auth_state_id=self.auth_state_id
                 )
-                return True, None
-            except Exception as e:
-                return False, str(e)
-        return True, None
+            return True, None
+        except Exception as e:
+            return False, str(e)
 
     async def terminate_instance(self):
         """Safely terminate the Scrapybara instance."""
         if self.instance:
-            self.instance.stop()
+            await self.instance.stop()
             self.instance = None
-            self.tool_collection = None
 
 
 async def check_pause_message(websocket: WebSocket) -> bool:
-    """Check for pause command from client with timeout.
-
-    Returns:
-        bool: True if pause command received, False otherwise
-    """
+    """Check for pause command from client with timeout."""
     try:
         data = await asyncio.wait_for(websocket.receive_json(), timeout=0.1)
         return isinstance(data, dict) and data.get("command") == "pause"
@@ -97,155 +68,81 @@ async def check_pause_message(websocket: WebSocket) -> bool:
         raise
 
 
-async def process_chat_message(
-    websocket: WebSocket, message: str, chat_session: ChatSession
-):
-    """Process a single chat message within a session.
+async def handle_step(websocket: WebSocket, step: Step):
+    """Handle each step of the Act execution."""
+    try:
+        if await check_pause_message(websocket):
+            raise asyncio.CancelledError("Pause requested")
+    except WebSocketDisconnect:
+        raise
 
-    Handles:
-    - Usage tracking and quota management
-    - Message processing with Claude
-    - Tool execution and result handling
-    - Real-time response streaming
-    """
-    # Verify user credentials and check agent credits
-    user_id = db.get_user_id(chat_session.api_key)
-    agent_credits = db.get_credits(user_id)
+    if step.text:
+        await websocket.send_json({"type": "text", "content": step.text})
 
-    chat_session.messages.append(
-        {
-            "role": "user",
-            "content": [{"type": "text", "text": message}],
-        }
-    )
-
-    client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-
-    while True:
-        try:
-            # Check if user has available credits
-            if agent_credits <= 0:
-                await websocket.send_json(
-                    {
-                        "type": "out_of_credits",
-                        "content": "You have run out of agent credits. Please purchase more to continue.",
-                    }
-                )
-                return
-
-            # Update agent credits
-            db.decrement_credits(user_id)
-
-            if await check_pause_message(websocket):
-                await websocket.send_json(
-                    {"type": "loop_paused", "content": "Loop paused"}
-                )
-                break
-
-            maybe_filter_to_n_most_recent_images(chat_session.messages, 4, 2)
-
-            assert chat_session.tool_collection is not None  # for type checker
-
-            # Generate response from Claude
-            response = client.beta.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=4096,
-                messages=chat_session.messages,
-                system=[{"type": "text", "text": SYSTEM_PROMPT}],
-                tools=chat_session.tool_collection.to_params(),
-                betas=["computer-use-2024-10-22"],
-            )
-
-            response_params = response_to_params(response)
-            tool_result_content = []
-
-            # Process and stream response content
-            for content_block in response_params:
-                if content_block["type"] == "text":
-                    await websocket.send_json(
-                        {"type": "text", "content": content_block["text"]}
-                    )
-                elif content_block["type"] == "tool_use":
-                    await websocket.send_json(
-                        {
-                            "type": "tool_use",
-                            "name": content_block["name"],
-                            "input": content_block["input"],
-                        }
-                    )
-
-                    result = await chat_session.tool_collection.run(
-                        name=content_block["name"],
-                        tool_input=cast(dict[str, Any], content_block["input"]),
-                    )
-
-                    # Capture screenshot for empty bash results
-                    if content_block["name"] == "bash" and (
-                        not result
-                        or (
-                            result.output == ""
-                            and result.error == ""
-                            and result.base64_image is None
-                        )
-                    ):
-                        result = await chat_session.tool_collection.run(
-                            name="computer", tool_input={"action": "screenshot"}
-                        )
-
-                    if result:
-                        tool_result = make_tool_result(result, content_block["id"])
-                        tool_result_content.append(tool_result)
-
-                        await websocket.send_json(
-                            {
-                                "type": "tool_result",
-                                "output": result.output if result.output else None,
-                                "error": result.error if result.error else None,
-                                "image": (
-                                    result.base64_image if result.base64_image else None
-                                ),
-                            }
-                        )
-
-            # Update chat history
-            chat_session.messages.append(
+    if step.tool_calls:
+        for call in step.tool_calls:
+            await websocket.send_json(
                 {
-                    "role": "assistant",
-                    "content": response_params,
+                    "type": "tool_use",
+                    "name": call.tool_name,
+                    "input": call.args,
                 }
             )
 
-            if tool_result_content:
-                chat_session.messages.append(
-                    {"role": "user", "content": tool_result_content}
-                )
-            else:
-                await websocket.send_json(
-                    {"type": "loop_complete", "content": "Loop complete"}
-                )
-                break
+    if step.tool_results:
+        for result in step.tool_results:
+            output = result.result.get("output", None)
+            error = result.result.get("error", None)
 
-        except Exception as e:
             await websocket.send_json(
-                {"type": "tool_result", "error": f"Anthropic API error: {str(e)}"}
+                {
+                    "type": "tool_result",
+                    "output": output,
+                    "error": error,
+                }
             )
-            await websocket.send_json(
-                {"type": "loop_complete", "content": "Loop complete"}
-            )
-            return
+
+
+async def process_chat_message(
+    websocket: WebSocket,
+    messages: List[Message],
+    chat_session: ChatSession,
+    model_name: str,
+) -> List[Message]:
+    """Process a single chat message within a session and return updated messages."""
+
+    model: Optional[Model] = None
+
+    if model_name == "claude-3-5-sonnet-20241022":
+        model = Anthropic()
+    else:
+        raise HTTPException(status_code=400, detail="Invalid model name")
+
+    async def step_handler(step: Step):
+        await handle_step(websocket, step)
+
+    response = await chat_session.client.act(
+        model=model,
+        tools=[
+            BashTool(chat_session.instance),
+            ComputerTool(chat_session.instance),
+            EditTool(chat_session.instance),
+        ],
+        system=UBUNTU_SYSTEM_PROMPT,
+        messages=messages,
+        on_step=step_handler,
+    )
+
+    await websocket.send_json({"type": "loop_complete", "content": "Loop complete"})
+    return response.messages
 
 
 @app.websocket("/ws/chat")
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for handling chat sessions.
-
-    Manages:
-    - WebSocket connection lifecycle
-    - Chat session initialization and cleanup
-    - Message processing loop
-    """
+    """WebSocket endpoint for handling chat sessions."""
     await websocket.accept()
     chat_session = None
+    messages: List[Message] = []
 
     try:
         data = await websocket.receive_json()
@@ -253,6 +150,7 @@ async def websocket_endpoint(websocket: WebSocket):
             raise HTTPException(status_code=400, detail="API key required")
 
         api_key = data["api_key"]
+        model_name = data.get("model_name", "claude-3-5-sonnet-20241022")
         auth_state_id = data.get("auth_state_id", None)
         chat_session = ChatSession(api_key, auth_state_id)
 
@@ -276,16 +174,17 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.send_json(
             {"type": "tool_result", "output": "₍ᐢ•(ܫ)•ᐢ₎ Launching agent"}
         )
-        await websocket.send_json(
-            {
-                "type": "instance_info",
-                "url": chat_session.stream_url,
-                "instance_id": chat_session.instance.id,
-                "launch_time": chat_session.instance.launch_time.isoformat(),
-            }
-        )
 
-        assert chat_session.tool_collection is not None  # for type checker
+        if chat_session.instance:
+            stream_url = await chat_session.instance.get_stream_url()
+            await websocket.send_json(
+                {
+                    "type": "instance_info",
+                    "url": stream_url.stream_url,
+                    "instance_id": chat_session.instance.id,
+                    "launch_time": chat_session.instance.launch_time.isoformat(),
+                }
+            )
 
         # Main message processing loop
         while True:
@@ -294,12 +193,32 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if isinstance(data, dict):
                     if data.get("command") == "terminate":
+                        if chat_session.current_task:
+                            chat_session.current_task.cancel()
                         await chat_session.terminate_instance()
                         break
+                    elif data.get("command") == "pause":
+                        if chat_session.current_task:
+                            chat_session.current_task.cancel()
                     elif "message" in data:
-                        await process_chat_message(
-                            websocket, data["message"], chat_session
+                        messages.append(
+                            UserMessage(content=[TextPart(text=data["message"])])
                         )
+                        chat_session.current_task = asyncio.create_task(
+                            process_chat_message(
+                                websocket, messages, chat_session, model_name
+                            )
+                        )
+                        try:
+                            updated_messages = await chat_session.current_task
+                            if updated_messages:
+                                messages = updated_messages
+                        except asyncio.CancelledError:
+                            await websocket.send_json(
+                                {"type": "loop_paused", "content": "Loop paused"}
+                            )
+                        finally:
+                            chat_session.current_task = None
 
             except WebSocketDisconnect:
                 break
@@ -307,7 +226,9 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"WebSocket error: {str(e)}")
     finally:
-        if chat_session and chat_session.instance:
+        if chat_session:
+            if chat_session.current_task:
+                chat_session.current_task.cancel()
             await chat_session.terminate_instance()
         try:
             await websocket.close()
