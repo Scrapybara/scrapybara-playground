@@ -5,7 +5,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from scrapybara import AsyncScrapybara
 from scrapybara.anthropic import Anthropic
-from scrapybara.prompts import UBUNTU_SYSTEM_PROMPT
+from prompt import SYSTEM_PROMPT
 from scrapybara.tools import BashTool, ComputerTool, EditTool
 from scrapybara.types import Step, Message, UserMessage, Model, TextPart
 from scrapybara.client import AsyncUbuntuInstance
@@ -127,7 +127,7 @@ async def process_chat_message(
             ComputerTool(chat_session.instance),
             EditTool(chat_session.instance),
         ],
-        system=UBUNTU_SYSTEM_PROMPT,
+        system=SYSTEM_PROMPT,
         messages=messages,
         on_step=step_handler,
     )
