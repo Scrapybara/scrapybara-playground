@@ -7,7 +7,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-scrapybara = "2.2.4"
+scrapybara = "2.2.5"
 uvicorn = {extras = ["standard"], version = "^0.32.0"}
 fastapi = "^0.115.5"
 python-dotenv = "^1.0.1"
