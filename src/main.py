@@ -5,7 +5,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from scrapybara import AsyncScrapybara
 from scrapybara.anthropic import Anthropic
-from prompt import SYSTEM_PROMPT
+from .prompt import SYSTEM_PROMPT
 from scrapybara.tools import BashTool, ComputerTool, EditTool
 from scrapybara.types import Step, Message, UserMessage, Model, TextPart
 from scrapybara.client import AsyncUbuntuInstance
