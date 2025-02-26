@@ -79,6 +79,9 @@ async def handle_step(websocket: WebSocket, step: Step):
     if step.text:
         await websocket.send_json({"type": "text", "content": step.text})
 
+    if step.reasoning:
+        await websocket.send_json({"type": "thinking", "content": step.thinking})
+
     if step.tool_calls:
         for call in step.tool_calls:
             await websocket.send_json(
