@@ -77,19 +77,7 @@ async def handle_step(websocket: WebSocket, step: Step):
         raise
 
     if step.text:
-        thinking_pattern = r"<thinking>(.*?)</thinking>\s*\n(.*)"
-        match = re.search(thinking_pattern, step.text, re.DOTALL)
-
-        if match:
-            thinking_content = match.group(1).strip()
-            assistant_text = match.group(2).strip()
-
-            await websocket.send_json({"type": "thinking", "content": thinking_content})
-
-            if assistant_text:
-                await websocket.send_json({"type": "text", "content": assistant_text})
-        else:
-            await websocket.send_json({"type": "text", "content": step.text})
+        await websocket.send_json({"type": "text", "content": step.text})
 
     if step.tool_calls:
         for call in step.tool_calls:
