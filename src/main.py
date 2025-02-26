@@ -112,8 +112,12 @@ async def process_chat_message(
 
     model: Optional[Model] = None
 
-    if model_name == "claude-3-5-sonnet-20241022":
-        model = Anthropic()
+    if model_name in [
+        "claude-3-7-sonnet-20250219",
+        "claude-3-7-sonnet-20250219-thinking",
+        "claude-3-5-sonnet-20241022",
+    ]:
+        model = Anthropic(name=model_name)
     else:
         raise HTTPException(status_code=400, detail="Invalid model name")
 
