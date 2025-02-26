@@ -1,5 +1,6 @@
 import asyncio
 import uvicorn
+import re
 from typing import List, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -76,7 +77,19 @@ async def handle_step(websocket: WebSocket, step: Step):
         raise
 
     if step.text:
-        await websocket.send_json({"type": "text", "content": step.text})
+        thinking_pattern = r"<thinking>(.*?)</thinking>\s*\n(.*)"
+        match = re.search(thinking_pattern, step.text, re.DOTALL)
+
+        if match:
+            thinking_content = match.group(1).strip()
+            assistant_text = match.group(2).strip()
+
+            await websocket.send_json({"type": "thinking", "content": thinking_content})
+
+            if assistant_text:
+                await websocket.send_json({"type": "text", "content": assistant_text})
+        else:
+            await websocket.send_json({"type": "text", "content": step.text})
 
     if step.tool_calls:
         for call in step.tool_calls:
@@ -153,7 +166,7 @@ async def websocket_endpoint(websocket: WebSocket):
             raise HTTPException(status_code=400, detail="API key required")
 
         api_key = data["api_key"]
-        model_name = data.get("model_name", "claude-3-5-sonnet-20241022")
+        model_name = data.get("model_name", "claude-3-7-sonnet-20250219")
         auth_state_id = data.get("auth_state_id", None)
         chat_session = ChatSession(api_key, auth_state_id)
 
