@@ -27,8 +27,7 @@ This is the FastAPI backend powering the official [Scrapybara playground](https:
   - Scrapybara instance lifecycle
   - Message history and context management
   - Tool execution (Computer, Bash, and Edit tools)
-- Sampling loop with Claude Computer Use via the Anthropic API
-- Agent credit system stored in Supabase for usage management
+- Agent calls with Scrapybara Act SDK
 
 ## Local Development
 
