@@ -81,7 +81,9 @@ async def handle_step(websocket: WebSocket, step: Step):
 
     if step.reasoning_parts:
         for reasoning in step.reasoning_parts:
-            await websocket.send_json({"type": "reasoning", "content": reasoning.reasoning})
+            await websocket.send_json(
+                {"type": "reasoning", "content": reasoning.reasoning}
+            )
 
     if step.tool_calls:
         for call in step.tool_calls:
@@ -95,8 +97,8 @@ async def handle_step(websocket: WebSocket, step: Step):
 
     if step.tool_results:
         for result in step.tool_results:
-            output = result.result.get("output", None)
-            error = result.result.get("error", None)
+            output = result.result.output
+            error = result.result.error
 
             await websocket.send_json(
                 {
@@ -225,9 +227,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             await websocket.send_json(
                                 {"type": "loop_paused", "content": "Loop paused"}
                             )
+                        except Exception as e:
+                            print(f"Error: {str(e)}")
                         finally:
                             chat_session.current_task = None
-
             except WebSocketDisconnect:
                 break
 
