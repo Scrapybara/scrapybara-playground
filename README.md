@@ -1,3 +1,5 @@
+> ⚠️ As of 3/11, this codebase has been deprecated in favor of a new playground backend in our Next.js codebase. This repository will no longer be maintained. Please view new [cookbook](https://github.com/scrapybara/scrapybara-cookbook) examples for reference.
+
 <div id="toc" align="center">
   <ul style="list-style: none">
     <summary>
@@ -7,7 +9,7 @@
 </div>
 
 <p align="center">
-  Computer use playground hosted on Scrapybara instances
+  Computer use playground hosted on Scrapybara instances (deprecated)
 </p>
 
 <p align="center">
@@ -18,7 +20,7 @@
 
 ## Intro
 
-This is the FastAPI backend powering the official [Scrapybara playground](https://scrapybara.com/playground). It provides a WebSocket interface for users to interact with a Claude Computer Use agent running on a virtual Scrapybara instance.
+This is the FastAPI backend that **used to** power the official [Scrapybara playground](https://scrapybara.com/playground). It provides a WebSocket interface for users to interact with a Claude Computer Use agent running on a virtual Scrapybara instance.
 
 ### How it works
 
